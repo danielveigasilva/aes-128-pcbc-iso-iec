@@ -46,26 +46,23 @@ void encript_file(uint8_t * key, char * file_name_in, char * file_name_out){
 
     fseek(file_in, 0L, SEEK_END);
     long sizeFileIn = ftell(file_in);
-
-    int nBlocks = ceil((float) sizeFileIn / SIZE_BLOCK);
-    int lastBlockSize = nBlocks == 1 ? sizeFileIn : SIZE_BLOCK - ((nBlocks * SIZE_BLOCK) - sizeFileIn);
-
-    int addBlockPadding = false;
-
     fseek(file_in, 0L, SEEK_SET);
+
+    long nBytesRead = 0;
+    int addBlockPadding = false;
 
     uint8_t IV[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-    while (nBlocks > 0 || addBlockPadding){
+    while (sizeFileIn > nBytesRead || addBlockPadding){
 
         uint8_t block_plaintext[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
         if (!addBlockPadding){
-            fread(block_plaintext, SIZE_BLOCK, 1, file_in);
-            nBlocks --;
-
-            if (nBlocks == 0)
-                addBlockPadding = padding(block_plaintext, lastBlockSize);
+            nBytesRead += fread(block_plaintext, 1, SIZE_BLOCK, file_in);
+            if (nBytesRead < SIZE_BLOCK)
+                padding(block_plaintext, nBytesRead);
+            else if ((sizeFileIn - nBytesRead) == 0)
+                addBlockPadding = true;
         }
         else {
             block_plaintext[0] = 0x80;
@@ -90,18 +87,17 @@ void decript_file(uint8_t * key, char * file_name_in, char * file_name_out){
 
     fseek(file_in, 0L, SEEK_END);
     long sizeFileIn = ftell(file_in);
-
-    int nBlocks = ceil((float) sizeFileIn / SIZE_BLOCK);
     fseek(file_in, 0L, SEEK_SET);
+
+    long nBytesRead = 0;
 
     uint8_t IV[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-    while (nBlocks > 0){
+    while (sizeFileIn > nBytesRead){
 
         uint8_t block_ciphertext[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         
-        fread(block_ciphertext, SIZE_BLOCK, 1, file_in);
-        nBlocks --;
+        nBytesRead += fread(block_ciphertext, 1, SIZE_BLOCK, file_in);
 
         uint8_t iv_xor_pt[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         AES128_Decrypt(block_ciphertext, key, iv_xor_pt);
@@ -109,7 +105,7 @@ void decript_file(uint8_t * key, char * file_name_in, char * file_name_out){
         uint8_t block_plaintext[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         xor_block(iv_xor_pt, IV, block_plaintext);
 
-        if (nBlocks == 0){
+        if ((sizeFileIn - nBytesRead) == 0){
             for (int i = SIZE_BLOCK - 1; i >= 0; i --)
                 if (block_plaintext[i] == 0x80 && i != 0)
                     fwrite(block_plaintext, i, 1, file_out);
@@ -127,7 +123,7 @@ int main (int argc, char *argv[]){
     char * file_name_in = argv[2];
     char * file_name_out = argv[3];
 
-    uint8_t key[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };    // SIZE_BLOCK bytes = 128 bits
+    uint8_t key[SIZE_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
     if (!file_exist(file_name_in)){
         printf("ERRO: Arquivo %s não foi encontrado!\n", file_name_in);
